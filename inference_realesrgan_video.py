@@ -32,7 +32,15 @@ def get_video_meta_info(video_path):
     ret['height'] = video_streams[0]['height']
     ret['fps'] = eval(video_streams[0]['avg_frame_rate'])
     ret['audio'] = ffmpeg.input(video_path).audio if has_audio else None
-    ret['nb_frames'] = int(video_streams[0]['nb_frames'])
+    if 'nb_frames' in video_streams[0].keys():
+        ret['nb_frames'] = int(video_streams[0]['nb_frames'])
+    else: # Use pymediainfo to get the number of frames
+        from pymediainfo import MediaInfo
+        info = MediaInfo.parse(video_path)
+        for track in info.tracks:
+            if track.track_type == 'Video':
+                ret['nb_frames'] = int(track.frame_count)
+                break
     return ret
 
 
@@ -269,7 +277,7 @@ def inference_video(args, video_save_path, device=None, total_workers=1, worker_
         else:
             writer.write_frame(output)
 
-        torch.cuda.synchronize(device)
+        torch.cuda.synchronize(device) if torch.cuda.is_available() else None
         pbar.update(1)
 
     reader.close()
@@ -286,7 +294,7 @@ def run(args):
         os.system(f'ffmpeg -i {args.input} -qscale:v 1 -qmin 1 -qmax 1 -vsync 0  {tmp_frames_folder}/frame%08d.png')
         args.input = tmp_frames_folder
 
-    num_gpus = torch.cuda.device_count()
+    num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 1
     num_process = num_gpus * args.num_process_per_gpu
     if num_process == 1:
         inference_video(args, video_save_path)
